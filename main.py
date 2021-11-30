@@ -14,6 +14,7 @@ device = "cpu"
 torch.set_num_threads(4)
 
 batch_size = 256 # batch for one node
+
 def train_model(model, train_loader, optimizer, criterion, epoch):
     """
     model (torch.nn.module): The model created to train
@@ -22,12 +23,36 @@ def train_model(model, train_loader, optimizer, criterion, epoch):
     criterion (nn.CrossEntropyLoss) : Loss function used to train the network
     epoch (int): Current epoch number
     """
-
+    curr_loss = 0.0
     # remember to exit the train loop at end of the epoch
     for batch_idx, (data, target) in enumerate(train_loader):
         # Your code goes here!
-        break
+        data,target = data.to(device),target.to(device)
+        
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        # forward pass
+        guess =  model(data)
+        
+        #loss calculate
+        loss = criterion(guess,target);
+        
+        # calculate gradients
+        loss.backward()
+                
+        for param in model.parameters():
+            dist.all_reduce(param.grad,op = dist.ReduceOp.SUM)
+            param.grad /= 4
 
+        # update the weights
+        optimizer.step()
+        
+        #printing loss every 20th iteration
+        curr_loss += loss.item()
+    
+        if (batch_idx % 20) == 19:
+            print('Average loss after {} iteration is {}'.format(batch_idx+1,curr_loss/20))
+            curr_loss = 0.0
     return None
 
 def test_model(model, test_loader, criterion):
